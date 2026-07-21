@@ -94,7 +94,7 @@ const PRAYERS = [
   "May today mark the beginning of your best season yet. You are loved and celebrated by Ijebu Forum Abuja!",
   "The Lord who brought you this far will never abandon you. Wishing you a wonderful birthday filled with God's goodness!"
 ];
-const GEO = {lat:9.0579,lng:7.4951,name:'Transcorp Hilton, Abuja',radius:300};
+const GEO = {lat:9.0579,lng:7.4951,name:'Transcorp Hilton, Abuja',radius:50};
 
 const SEED_M = [
   {id:'IFA-0001',name:'Adebayo Kolawole',role:'president',des:'Chief',prof:'Businessman',phone:'08012345678',email:'adebayo@ijebu.ng',addr:'Plot 45 Maitama, Abuja',town:'Ijebu-Ode',dobDay:'15',dobMonth:'March',dobYear:'1968',nok:'Mrs Adebayo',nokP:'08012345679',nokR:'Spouse',pts:780,streak:6,att:['present','present','present','present','present','present'],tdone:12,joined:'2020-01-15',status:'active',photo:null,method:'geo',fn:'Adebayo',ln:'Kolawole',on:''},
@@ -411,6 +411,42 @@ export default function App() {
   const [rsvps, setRsvps] = useState([]);
   const [pending, setPending] = useState([]);
   const [bdayAcks, setBdayAcks] = useState([]);
+  const [settings, setSettings] = useState({
+    forumName:'Ijebu Forum Abuja',
+    tagline:'Unity · Progress · Welfare',
+    description:'A community of Ijebu indigenes resident in Abuja, meeting every 2nd Sunday monthly.',
+    phone:'',
+    email:'',
+    address:'Abuja, Nigeria',
+    country:'Nigeria',
+    state:'FCT Abuja',
+    currency:'Naira',
+    currencySymbol:'₦',
+    currencyRate:'1',
+    monthlyDues:'2000',
+    memberCardFee:'1000',
+    contributionMin:'500',
+    themeColor:'#14532d',
+    logo:null,
+    rules:[
+      'Members must attend at least 75% of monthly meetings.',
+      'Monthly dues must be paid on or before the meeting day.',
+      'Members must dress decently in Ankara/native attire on meeting days.',
+      'Respect and courtesy must be shown to all members at all times.',
+      'No member shall engage in conduct unbecoming of a Forum member.',
+    ],
+    penalties:[
+      'Absence without excuse: ₦500 fine.',
+      'Late payment of dues: ₦200 surcharge per month.',
+      'Misconduct: Warning, suspension or expulsion as determined by Exco.',
+    ],
+    settingsPin:'0000',
+    pinLocked:true,
+  });
+  const [settingsPinInput, setSettingsPinInput] = useState('');
+  const [settingsUnlocked, setSettingsUnlocked] = useState(false);
+  const [showReset, setShowReset] = useState(false);
+  const [resetPin, setResetPin] = useState('');
   const [bdayModal, setBdayModal] = useState(null);
   const [scr, setScr] = useState('splash');
   const [user, setUser] = useState(null);
@@ -530,6 +566,34 @@ export default function App() {
   };
   const doLogout = () => { setUser(null); setScr('splash'); setMenuOpen(false); };
 
+  const doSystemReset = () => {
+    if (resetPin !== settings.settingsPin) { T('Wrong PIN. System reset cancelled.'); return; }
+    setMembers([{...members[0], pts:0, streak:0, att:[], tdone:0}]);
+    setTasks([]); setAnns([]); setEvents([]); setPolls([]);
+    setTxns([]); setComplaints([]);
+    setChats({general:[],exco:[],welfare:[],events:[],birthdays:[]});
+    setNotifs([]); setPaidDues([]); setRsvps([]); setPending([]);
+    setBdayAcks([]); setBdayModal(null);
+    setShowReset(false); setResetPin('');
+    T('System reset complete. All data cleared. Only admin account retained.');
+    setModal(null);
+  };
+
+  const saveSettings = () => {
+    T('Settings saved successfully!');
+    setSettingsUnlocked(false);
+    setSettingsPinInput('');
+  };
+
+  const unlockSettings = () => {
+    if (settingsPinInput === settings.settingsPin) {
+      setSettingsUnlocked(true); setSettingsPinInput('');
+      T('Settings unlocked!');
+    } else {
+      T('Wrong PIN. Access denied.');
+    }
+  };
+
   const doReg = adminMode => {
     const name = [reg.fn, reg.ln, reg.on].filter(Boolean).join(' ');
     if (!reg.fn || !reg.ln || !reg.phone) { T('Fill all required fields'); return; }
@@ -648,51 +712,51 @@ export default function App() {
       </div>
       <div className="fsec">Personal Information</div>
       <div className="r3">
-        <div className="fg"><label>First Name *</label><input value={reg.fn} onChange={e=>setReg(r=>({...r,fn:e.target.value}))} placeholder="First"/></div>
-        <div className="fg"><label>Last Name *</label><input value={reg.ln} onChange={e=>setReg(r=>({...r,ln:e.target.value}))} placeholder="Last"/></div>
-        <div className="fg"><label>Other Name</label><input value={reg.on} onChange={e=>setReg(r=>({...r,on:e.target.value}))} placeholder="Other"/></div>
+        <div className="fg"><label>First Name *</label><input value={reg.fn} onChange={e=>{const v=e.target.value;setReg(r=>({...r,fn:v}))}} placeholder="First"/></div>
+        <div className="fg"><label>Last Name *</label><input value={reg.ln} onChange={e=>{const v=e.target.value;setReg(r=>({...r,ln:v}))}} placeholder="Last"/></div>
+        <div className="fg"><label>Other Name</label><input value={reg.on} onChange={e=>{const v=e.target.value;setReg(r=>({...r,on:v}))}} placeholder="Other"/></div>
       </div>
       <div className="r2">
-        <div className="fg"><label>Phone *</label><input type="tel" value={reg.phone} onChange={e=>setReg(r=>({...r,phone:e.target.value}))} placeholder="+234..."/></div>
-        <div className="fg"><label>Email</label><input type="email" value={reg.email} onChange={e=>setReg(r=>({...r,email:e.target.value}))} placeholder="email@..."/></div>
+        <div className="fg"><label>Phone *</label><input type="tel" value={reg.phone} onChange={e=>{const v=e.target.value;setReg(r=>({...r,phone:v}))}} placeholder="+234..."/></div>
+        <div className="fg"><label>Email</label><input type="email" value={reg.email} onChange={e=>{const v=e.target.value;setReg(r=>({...r,email:v}))}} placeholder="email@..."/></div>
       </div>
-      <div className="fg"><label>Abuja Address</label><input value={reg.addr} onChange={e=>setReg(r=>({...r,addr:e.target.value}))} placeholder="House, Street, Area Council"/></div>
+      <div className="fg"><label>Abuja Address</label><input value={reg.addr} onChange={e=>{const v=e.target.value;setReg(r=>({...r,addr:v}))}} placeholder="House, Street, Area Council"/></div>
       <div className="r2">
-        <div className="fg"><label>Home Town</label><input value={reg.town} onChange={e=>setReg(r=>({...r,town:e.target.value}))} placeholder="e.g. Ijebu-Ode"/></div>
-        <div className="fg"><label>Hometown Address</label><input value={reg.hAddr} onChange={e=>setReg(r=>({...r,hAddr:e.target.value}))} placeholder="Home address"/></div>
+        <div className="fg"><label>Home Town</label><input value={reg.town} onChange={e=>{const v=e.target.value;setReg(r=>({...r,town:v}))}} placeholder="e.g. Ijebu-Ode"/></div>
+        <div className="fg"><label>Hometown Address</label><input value={reg.hAddr} onChange={e=>{const v=e.target.value;setReg(r=>({...r,hAddr:v}))}} placeholder="Home address"/></div>
       </div>
       <div className="fg"><label>Date of Birth</label>
         <div className="r3">
-          <input type="number" value={reg.dobDay} onChange={e=>setReg(r=>({...r,dobDay:e.target.value}))} placeholder="Day" min="1" max="31"/>
-          <select value={reg.dobMonth} onChange={e=>setReg(r=>({...r,dobMonth:e.target.value}))}>
+          <input type="number" value={reg.dobDay} onChange={e=>{const v=e.target.value;setReg(r=>({...r,dobDay:v}))}} placeholder="Day" min="1" max="31"/>
+          <select value={reg.dobMonth} onChange={e=>{const v=e.target.value;setReg(r=>({...r,dobMonth:v}))}}>
             <option value="">Month</option>{MONTHS.map(m=><option key={m}>{m}</option>)}
           </select>
-          <input type="number" value={reg.dobYear} onChange={e=>setReg(r=>({...r,dobYear:e.target.value}))} placeholder="Year" min="1940" max="2006"/>
+          <input type="number" value={reg.dobYear} onChange={e=>{const v=e.target.value;setReg(r=>({...r,dobYear:v}))}} placeholder="Year" min="1940" max="2006"/>
         </div>
       </div>
       <div className="r2">
-        <div className="fg"><label>Profession</label><input value={reg.prof} onChange={e=>setReg(r=>({...r,prof:e.target.value}))} placeholder="e.g. Engineer"/></div>
-        <div className="fg"><label>Designation</label><input value={reg.des} onChange={e=>setReg(r=>({...r,des:e.target.value}))} placeholder="Dr., Engr."/></div>
+        <div className="fg"><label>Profession</label><input value={reg.prof} onChange={e=>{const v=e.target.value;setReg(r=>({...r,prof:v}))}} placeholder="e.g. Engineer"/></div>
+        <div className="fg"><label>Designation</label><input value={reg.des} onChange={e=>{const v=e.target.value;setReg(r=>({...r,des:v}))}} placeholder="Dr., Engr."/></div>
       </div>
       {adminMode && <div className="fg"><label>Role</label>
-        <select value={reg.role} onChange={e=>setReg(r=>({...r,role:e.target.value}))}>
+        <select value={reg.role} onChange={e=>{const v=e.target.value;setReg(r=>({...r,role:v}))}}>
           {Object.entries(ROLES).map(([k,v]) => <option key={k} value={k}>{v}</option>)}
         </select>
       </div>}
       <div className="fsec">Next of Kin</div>
       <div className="r3">
-        <div className="fg"><label>Name *</label><input value={reg.nok} onChange={e=>setReg(r=>({...r,nok:e.target.value}))} placeholder="Full name"/></div>
-        <div className="fg"><label>Phone</label><input type="tel" value={reg.nokP} onChange={e=>setReg(r=>({...r,nokP:e.target.value}))} placeholder="Phone"/></div>
-        <div className="fg"><label>Relationship</label><input value={reg.nokR} onChange={e=>setReg(r=>({...r,nokR:e.target.value}))} placeholder="Spouse"/></div>
+        <div className="fg"><label>Name *</label><input value={reg.nok} onChange={e=>{const v=e.target.value;setReg(r=>({...r,nok:v}))}} placeholder="Full name"/></div>
+        <div className="fg"><label>Phone</label><input type="tel" value={reg.nokP} onChange={e=>{const v=e.target.value;setReg(r=>({...r,nokP:v}))}} placeholder="Phone"/></div>
+        <div className="fg"><label>Relationship</label><input value={reg.nokR} onChange={e=>{const v=e.target.value;setReg(r=>({...r,nokR:v}))}} placeholder="Spouse"/></div>
       </div>
       <div className="fg"><label>Attendance Method</label>
-        <select value={reg.method} onChange={e=>setReg(r=>({...r,method:e.target.value}))}>
+        <select value={reg.method} onChange={e=>{const v=e.target.value;setReg(r=>({...r,method:v}))}}>
           <option value="geo">GPS Geolocation</option>
           <option value="scan">QR/Barcode Scan</option>
           <option value="biometric">Biometric Fingerprint</option>
         </select>
       </div>
-      {!adminMode && <div className="fg"><label>Password *</label><input type="password" value={reg.pw} onChange={e=>setReg(r=>({...r,pw:e.target.value}))} placeholder="Create password"/></div>}
+      {!adminMode && <div className="fg"><label>Password *</label><input type="password" value={reg.pw} onChange={e=>{const v=e.target.value;setReg(r=>({...r,pw:v}))}} placeholder="Create password"/></div>}
       <div className="hint">Auto-assigned Member ID: <strong>{nextId()}</strong></div>
       <button className="btnP fw" style={{marginTop:11}} onClick={() => doReg(adminMode)}>
         {adminMode ? 'Register Member & Assign ID' : 'Submit Application'}
@@ -750,6 +814,26 @@ export default function App() {
 
   PG.dashboard = (
     <div>
+      {/* PENDING MEMBERS ALERT */}
+      {isAdmin && pending.length > 0 && (
+        <div style={{background:'linear-gradient(135deg,#dc2626,#b91c1c)',color:'#fff',borderRadius:13,padding:14,marginBottom:10,cursor:'pointer',boxShadow:'0 4px 14px rgba(220,38,38,.35)'}} onClick={()=>navTo('admin')}>
+          <div style={{display:'flex',alignItems:'center',gap:10}}>
+            <span style={{fontSize:'1.8rem'}}>{"🔔"}</span>
+            <div>
+              <div style={{fontWeight:700,fontSize:'.95rem'}}>{"⚠️"} {pending.length} Pending Registration{pending.length>1?'s':''} Awaiting Approval</div>
+              <div style={{fontSize:'.76rem',opacity:.9,marginTop:2}}>Tap here to review and approve or deny new member applications</div>
+            </div>
+            <span style={{fontSize:'1.3rem',marginLeft:'auto'}}>{"›"}</span>
+          </div>
+          <div style={{marginTop:10,display:'flex',gap:7,flexWrap:'wrap'}}>
+            {pending.slice(0,3).map(m=>(
+              <div key={m.id} style={{background:'rgba(255,255,255,.2)',borderRadius:20,padding:'3px 10px',fontSize:'.72rem',fontWeight:600}}>{m.name}</div>
+            ))}
+            {pending.length>3&&<div style={{background:'rgba(255,255,255,.2)',borderRadius:20,padding:'3px 10px',fontSize:'.72rem',fontWeight:600}}>+{pending.length-3} more</div>}
+          </div>
+        </div>
+      )}
+
       <div className="cardG">
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
           <div>
@@ -810,6 +894,7 @@ export default function App() {
         ));
       })()}
     </div>
+    </div>
   );
 
   PG.attendance = (
@@ -835,13 +920,21 @@ export default function App() {
                       const dlat = (pos.coords.latitude - GEO.lat) * 111000;
                       const dlng = (pos.coords.longitude - GEO.lng) * 111000;
                       const dist = Math.round(Math.sqrt(dlat*dlat + dlng*dlng));
-                      const ok = dist <= GEO.radius;
-                      setGeoSt({ok, dist, msg: ok ? 'You are at the meeting venue ('+dist+'m away)' : 'You are '+dist+'m from the venue. Must be within '+GEO.radius+'m.'});
+                      const acc = Math.round(pos.coords.accuracy);
+                      if (dist <= GEO.radius) {
+                        setGeoSt({ok:true, dist, msg:'Location verified at '+GEO.name+'. You are '+dist+'m from the entrance. GPS accuracy: '+acc+'m.'});
+                      } else {
+                        setGeoSt({ok:false, dist, msg:'CHECK-IN DENIED. You are '+dist+'m from '+GEO.name+'. You must be physically present at the meeting venue. Remote or proxy check-in is strictly not allowed.'});
+                      }
                     },
-                    () => setGeoSt({ok:false, msg:'Location access denied. Enable GPS to verify.'})
+                    err => {
+                      const msgs = {1:'Location permission denied. Enable GPS in your phone settings and try again.',2:'GPS signal unavailable. Please go outdoors and retry.',3:'GPS request timed out. Please try again.'};
+                      setGeoSt({ok:false, msg:msgs[err.code]||'GPS error. Please try again.'});
+                    },
+                    {enableHighAccuracy:true, timeout:15000, maximumAge:0}
                   );
                 } else {
-                  setGeoSt({ok:false, msg:'GPS not supported on this device'});
+                  setGeoSt({ok:false, msg:'GPS not supported on this device. Please use a mobile phone.'});
                 }
               }}>{"📍"} Verify My Location</button>
             )}
@@ -983,16 +1076,16 @@ export default function App() {
       }) : <div className="empty"><span className="ei">{"✅"}</span><p>No tasks yet</p></div>)}
       {G('tasks')===2 && isAdmin && (
         <div className="card">
-          <div className="fg"><label>Task Title *</label><input value={tform.title} onChange={e=>setTform(f=>({...f,title:e.target.value}))} placeholder="Task title"/></div>
-          <div className="fg"><label>Description</label><textarea value={tform.desc} onChange={e=>setTform(f=>({...f,desc:e.target.value}))} rows={3} placeholder="Describe the task..."/></div>
+          <div className="fg"><label>Task Title *</label><input value={tform.title} onChange={e=>{const v=e.target.value;setTform(f=>({...f,title:v}))}} placeholder="Task title"/></div>
+          <div className="fg"><label>Description</label><textarea value={tform.desc} onChange={e=>{const v=e.target.value;setTform(f=>({...f,desc:v}))}} rows={3} placeholder="Describe the task..."/></div>
           <div className="fg"><label>Assign To *</label>
-            <select value={tform.assignee} onChange={e=>setTform(f=>({...f,assignee:e.target.value}))}>
+            <select value={tform.assignee} onChange={e=>{const v=e.target.value;setTform(f=>({...f,assignee:v}))}}>
               {members.filter(m=>m.status==='active').map(m => <option key={m.id} value={m.id}>{m.name} ({rl(m.role)})</option>)}
             </select>
           </div>
           <div className="r2">
-            <div className="fg"><label>Priority</label><select value={tform.priority} onChange={e=>setTform(f=>({...f,priority:e.target.value}))}>{['low','medium','high'].map(p=><option key={p}>{p}</option>)}</select></div>
-            <div className="fg"><label>Due Date *</label><input type="date" value={tform.due} onChange={e=>setTform(f=>({...f,due:e.target.value}))}/></div>
+            <div className="fg"><label>Priority</label><select value={tform.priority} onChange={e=>{const v=e.target.value;setTform(f=>({...f,priority:v}))}}>{['low','medium','high'].map(p=><option key={p}>{p}</option>)}</select></div>
+            <div className="fg"><label>Due Date *</label><input type="date" value={tform.due} onChange={e=>{const v=e.target.value;setTform(f=>({...f,due:v}))}}/></div>
           </div>
           <button className="btnP fw" onClick={() => { if(!tform.title||!tform.due){T('Fill title and due date');return;} setTasks(ts=>[{id:Date.now(),...tform,status:'pending',by:user.id},...ts]); setTform(f=>({...f,title:'',desc:''})); T('Task assigned!'); }}>Assign Task</button>
         </div>
@@ -1083,9 +1176,9 @@ export default function App() {
         <div>
           <div className="inote">{"🔒"} Complaints are treated confidentially by the Exco.</div>
           <div className="card">
-            <div className="fg"><label>Category</label><select value={cform.cat} onChange={e=>setCform(f=>({...f,cat:e.target.value}))}>{['General Complaint','Welfare Issue','Financial Concern','Member Conduct','Exco Concern','Suggestion','Other'].map(c=><option key={c}>{c}</option>)}</select></div>
-            <div className="fg"><label>Subject</label><input value={cform.sub} onChange={e=>setCform(f=>({...f,sub:e.target.value}))} placeholder="Brief subject"/></div>
-            <div className="fg"><label>Details</label><textarea rows={4} value={cform.det} onChange={e=>setCform(f=>({...f,det:e.target.value}))} placeholder="Describe in detail..."/></div>
+            <div className="fg"><label>Category</label><select value={cform.cat} onChange={e=>{const v=e.target.value;setCform(f=>({...f,cat:v}))}}>{['General Complaint','Welfare Issue','Financial Concern','Member Conduct','Exco Concern','Suggestion','Other'].map(c=><option key={c}>{c}</option>)}</select></div>
+            <div className="fg"><label>Subject</label><input value={cform.sub} onChange={e=>{const v=e.target.value;setCform(f=>({...f,sub:v}))}} placeholder="Brief subject"/></div>
+            <div className="fg"><label>Details</label><textarea rows={4} value={cform.det} onChange={e=>{const v=e.target.value;setCform(f=>({...f,det:v}))}} placeholder="Describe in detail..."/></div>
             <div className="fg"><label>Submit As</label><select value={cform.anon?'anon':'named'} onChange={e=>setCform(f=>({...f,anon:e.target.value==='anon'}))}><option value="named">Named</option><option value="anon">Anonymous</option></select></div>
             <button className="btnP fw" onClick={() => { if(!cform.sub||!cform.det){T('Fill subject and details');return;} setComplaints(cs=>[{id:Date.now(),sub:cform.sub,cat:cform.cat,det:cform.det,by:cform.anon?'Anonymous':user.name,date:today(),status:'open'},...cs]); setCform(f=>({...f,sub:'',det:''})); T('Complaint submitted.'); }}>Submit Complaint</button>
           </div>
@@ -1175,10 +1268,10 @@ export default function App() {
       })()}
       {G('vote')===3 && isAdmin && (
         <div className="card">
-          <div className="fg"><label>Poll Question</label><input value={pform.q} onChange={e=>setPform(f=>({...f,q:e.target.value}))} placeholder="e.g. Should we..."/></div>
+          <div className="fg"><label>Poll Question</label><input value={pform.q} onChange={e=>{const v=e.target.value;setPform(f=>({...f,q:v}))}} placeholder="e.g. Should we..."/></div>
           <div className="r2">
-            <div className="fg"><label>Type</label><select value={pform.type} onChange={e=>setPform(f=>({...f,type:e.target.value}))}>{['Yes / No','Multiple Choice','Election'].map(t=><option key={t}>{t}</option>)}</select></div>
-            <div className="fg"><label>End Date</label><input type="date" value={pform.end} onChange={e=>setPform(f=>({...f,end:e.target.value}))}/></div>
+            <div className="fg"><label>Type</label><select value={pform.type} onChange={e=>{const v=e.target.value;setPform(f=>({...f,type:v}))}}>{['Yes / No','Multiple Choice','Election'].map(t=><option key={t}>{t}</option>)}</select></div>
+            <div className="fg"><label>End Date</label><input type="date" value={pform.end} onChange={e=>{const v=e.target.value;setPform(f=>({...f,end:v}))}}/></div>
           </div>
           <button className="btnP fw" onClick={() => { if(!pform.q){T('Enter a question');return;} const opts=pform.type==='Yes / No'?[{t:'Yes',v:0},{t:'No',v:0}]:[{t:'Option 1',v:0},{t:'Option 2',v:0},{t:'Option 3',v:0}]; setPolls(ps=>[...ps,{id:Date.now(),q:pform.q,opts,end:pform.end,voters:[]}]); setPform({q:'',type:'Yes / No',end:''}); T('Poll created!'); }}>Create Poll</button>
           <div style={{marginTop:12}}>{polls.map(p => (
@@ -1245,13 +1338,13 @@ export default function App() {
       })()}
       {G('evts')===2 && isAdmin && (
         <div className="card">
-          <div className="fg"><label>Event Title *</label><input value={eform.title} onChange={e=>setEform(f=>({...f,title:e.target.value}))} placeholder="Event name"/></div>
+          <div className="fg"><label>Event Title *</label><input value={eform.title} onChange={e=>{const v=e.target.value;setEform(f=>({...f,title:v}))}} placeholder="Event name"/></div>
           <div className="r2">
-            <div className="fg"><label>Date *</label><input type="date" value={eform.date} onChange={e=>setEform(f=>({...f,date:e.target.value}))}/></div>
-            <div className="fg"><label>Time</label><input type="time" value={eform.time} onChange={e=>setEform(f=>({...f,time:e.target.value}))}/></div>
+            <div className="fg"><label>Date *</label><input type="date" value={eform.date} onChange={e=>{const v=e.target.value;setEform(f=>({...f,date:v}))}}/></div>
+            <div className="fg"><label>Time</label><input type="time" value={eform.time} onChange={e=>{const v=e.target.value;setEform(f=>({...f,time:v}))}}/></div>
           </div>
-          <div className="fg"><label>Venue</label><input value={eform.venue} onChange={e=>setEform(f=>({...f,venue:e.target.value}))} placeholder="Location"/></div>
-          <div className="fg"><label>Description</label><textarea value={eform.desc} onChange={e=>setEform(f=>({...f,desc:e.target.value}))} placeholder="Details..."/></div>
+          <div className="fg"><label>Venue</label><input value={eform.venue} onChange={e=>{const v=e.target.value;setEform(f=>({...f,venue:v}))}} placeholder="Location"/></div>
+          <div className="fg"><label>Description</label><textarea value={eform.desc} onChange={e=>{const v=e.target.value;setEform(f=>({...f,desc:v}))}} placeholder="Details..."/></div>
           <button className="btnP fw" onClick={() => { if(!eform.title||!eform.date){T('Fill title and date');return;} setEvents(es=>[{id:Date.now(),...eform,upcoming:true},...es]); setEform({title:'',date:'',time:'',venue:'',desc:''}); T('Event created!'); }}>Create Event</button>
         </div>
       )}
@@ -1273,9 +1366,9 @@ export default function App() {
       ))}
       {G('ann')===1 && isAdmin && (
         <div className="card">
-          <div className="fg"><label>Title</label><input value={aform.title} onChange={e=>setAform(f=>({...f,title:e.target.value}))} placeholder="Title"/></div>
-          <div className="fg"><label>Message</label><textarea rows={4} value={aform.body} onChange={e=>setAform(f=>({...f,body:e.target.value}))} placeholder="Write announcement..."/></div>
-          <div className="fg"><label>Priority</label><select value={aform.priority} onChange={e=>setAform(f=>({...f,priority:e.target.value}))}><option value="normal">Normal</option><option value="important">Important</option><option value="urgent">Urgent</option></select></div>
+          <div className="fg"><label>Title</label><input value={aform.title} onChange={e=>{const v=e.target.value;setAform(f=>({...f,title:v}))}} placeholder="Title"/></div>
+          <div className="fg"><label>Message</label><textarea rows={4} value={aform.body} onChange={e=>{const v=e.target.value;setAform(f=>({...f,body:v}))}} placeholder="Write announcement..."/></div>
+          <div className="fg"><label>Priority</label><select value={aform.priority} onChange={e=>{const v=e.target.value;setAform(f=>({...f,priority:v}))}}><option value="normal">Normal</option><option value="important">Important</option><option value="urgent">Urgent</option></select></div>
           <button className="btnP fw" onClick={() => { if(!aform.title||!aform.body){T('Fill title and body');return;} setAnns(as=>[{id:Date.now(),...aform,author:user.name,date:today()},...as]); setAform({title:'',body:'',priority:'normal'}); T('Announcement posted!'); }}>Post Announcement</button>
         </div>
       )}
@@ -1423,7 +1516,7 @@ export default function App() {
   PG.admin = (
     <div>
       <div className="agrid">
-        {[['👥','Members','members'],['📋','Attend.','attendance'],['💰','Finance','finance'],['✅','Tasks','tasks'],['🗳️','Elections','voting'],['📢','Announce','announcements'],['📅','Events','events'],['🎂','Birthdays','birthdays'],['🪪','ID Cards','idcard']].map(([ic,l,p]) => (
+        {[['👥','Members','members'],['📋','Attend.','attendance'],['💰','Finance','finance'],['✅','Tasks','tasks'],['🗳️','Elections','voting'],['📢','Announce','announcements'],['📅','Events','events'],['🎂','Birthdays','birthdays'],['🪪','ID Cards','idcard'],['⚙️','Settings','settings']].map(([ic,l,p]) => (
           <div className="acard" key={l} onClick={() => navTo(p)}><div className="aico">{ic}</div><div>{l}</div></div>
         ))}
       </div>
@@ -1472,7 +1565,184 @@ export default function App() {
     </div>
   );
 
-  const pageNames = {dashboard:'Dashboard',attendance:'Attendance',members:'Members',tasks:'Tasks',finance:'Finance',chat:'Forum Chat',complaints:'Complaints',voting:'Elections & Voting',leaderboard:'Leaderboard',events:'Events',announcements:'Announcements',profile:'My Profile',idcard:'My ID Card',birthdays:'Birthdays',admin:'Admin Panel'};
+
+  // ── SETTINGS PAGE ─────────────────────────────────────────────────────────
+  PG.settings = (
+    <div>
+      <div className="cardG" style={{textAlign:'center',marginBottom:12}}>
+        <div style={{fontSize:'2rem',marginBottom:6}}>{"⚙️"}</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:'1.1rem',fontWeight:700}}>Forum App Settings</div>
+        <div style={{fontSize:'.76rem',opacity:.8,marginTop:4}}>Locked with admin PIN code</div>
+      </div>
+
+      {!settingsUnlocked ? (
+        <div className="card" style={{textAlign:'center'}}>
+          <div style={{fontSize:'3rem',marginBottom:10}}>{"🔒"}</div>
+          <div style={{fontWeight:700,fontSize:'.95rem',color:'#14532d',marginBottom:5}}>Settings are PIN Protected</div>
+          <div style={{fontSize:'.78rem',color:'#6b7c6b',marginBottom:16}}>Enter your 4-digit admin PIN to access and modify settings</div>
+          <div className="fg"><label>Enter PIN</label>
+            <input type="password" maxLength={4} value={settingsPinInput}
+              onChange={e=>{const v=e.target.value;setSettingsPinInput(v);}}
+              placeholder="Enter 4-digit PIN" style={{textAlign:'center',fontSize:'1.5rem',letterSpacing:8}}
+              onKeyDown={e=>e.key==='Enter'&&unlockSettings()}/>
+          </div>
+          <button className="btnP fw" onClick={unlockSettings}>{"🔓"} Unlock Settings</button>
+          <div style={{marginTop:9,fontSize:'.72rem',color:'#6b7c6b'}}>Default PIN: 0000 (change after first login)</div>
+        </div>
+      ) : (
+        <div>
+          <div style={{background:'#dcfce7',borderRadius:11,padding:'9px 13px',marginBottom:11,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <span style={{fontSize:'.8rem',color:'#166534',fontWeight:600}}>{"🔓"} Settings Unlocked</span>
+            <button className="btnS r" onClick={()=>{setSettingsUnlocked(false);setSettingsPinInput('');}}>Lock</button>
+          </div>
+
+          <div className="sec">Forum Identity</div>
+          <div className="card">
+            <div className="fg"><label>Forum Name</label>
+              <input value={settings.forumName} onChange={e=>{const v=e.target.value;setSettings(s=>({...s,forumName:v}));}}/>
+            </div>
+            <div className="fg"><label>Tagline / Slogan</label>
+              <input value={settings.tagline} onChange={e=>{const v=e.target.value;setSettings(s=>({...s,tagline:v}));}}/>
+            </div>
+            <div className="fg"><label>Description</label>
+              <textarea rows={3} value={settings.description} onChange={e=>{const v=e.target.value;setSettings(s=>({...s,description:v}));}}/>
+            </div>
+            <div className="fg"><label>Upload Forum Logo</label>
+              <div className="photo-area">
+                <input type="file" accept="image/*" onChange={e=>handlePhoto(e,v=>setSettings(s=>({...s,logo:v})))}/>
+                {settings.logo
+                  ? <img src={settings.logo} style={{width:80,height:80,objectFit:'contain',display:'block',margin:'0 auto'}} alt="logo"/>
+                  : <div><div style={{fontSize:'2rem'}}>{"🖼️"}</div><div style={{fontSize:'.78rem',color:'#166534'}}>Tap to upload logo</div></div>
+                }
+              </div>
+            </div>
+            <div className="fg"><label>Theme Color</label>
+              <div style={{display:'flex',gap:10,alignItems:'center'}}>
+                <input type="color" value={settings.themeColor} onChange={e=>{const v=e.target.value;setSettings(s=>({...s,themeColor:v}));}} style={{width:50,height:40,padding:2,border:'2px solid #e2f0e2',borderRadius:8}}/>
+                <span style={{fontSize:'.8rem',color:'#6b7c6b'}}>{settings.themeColor}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="sec">Contact Information</div>
+          <div className="card">
+            <div className="r2">
+              <div className="fg"><label>Phone Number</label><input type="tel" value={settings.phone} onChange={e=>{const v=e.target.value;setSettings(s=>({...s,phone:v}));}}/></div>
+              <div className="fg"><label>Email Address</label><input type="email" value={settings.email} onChange={e=>{const v=e.target.value;setSettings(s=>({...s,email:v}));}}/></div>
+            </div>
+            <div className="fg"><label>Office Address</label>
+              <input value={settings.address} onChange={e=>{const v=e.target.value;setSettings(s=>({...s,address:v}));}}/>
+            </div>
+            <div className="r2">
+              <div className="fg"><label>Country</label><input value={settings.country} onChange={e=>{const v=e.target.value;setSettings(s=>({...s,country:v}));}}/></div>
+              <div className="fg"><label>State</label><input value={settings.state} onChange={e=>{const v=e.target.value;setSettings(s=>({...s,state:v}));}}/></div>
+            </div>
+          </div>
+
+          <div className="sec">Financial Settings</div>
+          <div className="card">
+            <div className="r2">
+              <div className="fg"><label>Currency Name</label><input value={settings.currency} onChange={e=>{const v=e.target.value;setSettings(s=>({...s,currency:v}));}}/></div>
+              <div className="fg"><label>Currency Symbol</label><input value={settings.currencySymbol} onChange={e=>{const v=e.target.value;setSettings(s=>({...s,currencySymbol:v}));}}/></div>
+            </div>
+            <div className="r2">
+              <div className="fg"><label>Exchange Rate (to USD)</label><input type="number" value={settings.currencyRate} onChange={e=>{const v=e.target.value;setSettings(s=>({...s,currencyRate:v}));}}/></div>
+              <div className="fg"><label>Monthly Dues Amount</label><input type="number" value={settings.monthlyDues} onChange={e=>{const v=e.target.value;setSettings(s=>({...s,monthlyDues:v}));}}/></div>
+            </div>
+            <div className="r2">
+              <div className="fg"><label>Member Card Fee</label><input type="number" value={settings.memberCardFee} onChange={e=>{const v=e.target.value;setSettings(s=>({...s,memberCardFee:v}));}}/></div>
+              <div className="fg"><label>Min. Contribution</label><input type="number" value={settings.contributionMin} onChange={e=>{const v=e.target.value;setSettings(s=>({...s,contributionMin:v}));}}/></div>
+            </div>
+          </div>
+
+          <div className="sec">Rules & Regulations</div>
+          <div className="card">
+            <div style={{fontSize:'.76rem',color:'#6b7c6b',marginBottom:9}}>Dos and Don'ts — displayed to all members</div>
+            {settings.rules.map((rule,i) => (
+              <div key={i} style={{display:'flex',gap:7,marginBottom:7,alignItems:'flex-start'}}>
+                <span style={{fontWeight:700,color:'#166534',fontSize:'.8rem',flexShrink:0}}>{"✅"} {i+1}.</span>
+                <input value={rule} style={{flex:1,padding:'7px 10px',border:'2px solid #e2f0e2',borderRadius:8,fontFamily:"'DM Sans',sans-serif",fontSize:'.8rem',outline:'none'}}
+                  onChange={e=>{const v=e.target.value;setSettings(s=>({...s,rules:s.rules.map((r,j)=>j===i?v:r)}));}}/>
+                <button className="btnS r" style={{flexShrink:0}} onClick={()=>setSettings(s=>({...s,rules:s.rules.filter((_,j)=>j!==i)}))}>✕</button>
+              </div>
+            ))}
+            <button className="btnS g" onClick={()=>setSettings(s=>({...s,rules:[...s.rules,'']}))}>{"+"} Add Rule</button>
+          </div>
+
+          <div className="sec">Penalties</div>
+          <div className="card">
+            {settings.penalties.map((pen,i) => (
+              <div key={i} style={{display:'flex',gap:7,marginBottom:7,alignItems:'flex-start'}}>
+                <span style={{fontWeight:700,color:'#dc2626',fontSize:'.8rem',flexShrink:0}}>{"⚠️"} {i+1}.</span>
+                <input value={pen} style={{flex:1,padding:'7px 10px',border:'2px solid #e2f0e2',borderRadius:8,fontFamily:"'DM Sans',sans-serif",fontSize:'.8rem',outline:'none'}}
+                  onChange={e=>{const v=e.target.value;setSettings(s=>({...s,penalties:s.penalties.map((p,j)=>j===i?v:p)}));}}/>
+                <button className="btnS r" style={{flexShrink:0}} onClick={()=>setSettings(s=>({...s,penalties:s.penalties.filter((_,j)=>j!==i)}))}>✕</button>
+              </div>
+            ))}
+            <button className="btnS g" onClick={()=>setSettings(s=>({...s,penalties:[...s.penalties,'']}))}>{"+"} Add Penalty</button>
+          </div>
+
+          <div className="sec">Authority & Permissions</div>
+          <div className="card">
+            <div style={{fontSize:'.78rem',color:'#6b7c6b',marginBottom:9,lineHeight:1.6}}>
+              <strong>Admin (President):</strong> Full access — register, edit, delete, suspend members, manage all content, approve registrations, view all finance records, reset system.<br/><br/>
+              <strong>Finance (Treasurer/Financial Secretary):</strong> Record income, expenses, view all transactions.<br/><br/>
+              <strong>Exco Members:</strong> Manage tasks, events, announcements, complaints.<br/><br/>
+              <strong>Regular Members:</strong> View content, chat, vote, pay dues, RSVP events, update own profile.
+            </div>
+          </div>
+
+          <div className="sec">Change Settings PIN</div>
+          <div className="card">
+            <div className="fg"><label>New PIN (4 digits)</label>
+              <input type="password" maxLength={4} placeholder="Enter new 4-digit PIN"
+                id="newpin" style={{textAlign:'center',fontSize:'1.3rem',letterSpacing:8}}/>
+            </div>
+            <div className="fg"><label>Confirm PIN</label>
+              <input type="password" maxLength={4} placeholder="Confirm PIN"
+                id="confirmpin" style={{textAlign:'center',fontSize:'1.3rem',letterSpacing:8}}/>
+            </div>
+            <button className="btnP fw" onClick={()=>{
+              const np=document.getElementById('newpin').value;
+              const cp=document.getElementById('confirmpin').value;
+              if(np.length!==4){T('PIN must be exactly 4 digits');return;}
+              if(np!==cp){T('PINs do not match');return;}
+              setSettings(s=>({...s,settingsPin:np}));
+              document.getElementById('newpin').value='';
+              document.getElementById('confirmpin').value='';
+              T('Settings PIN changed successfully!');
+            }}>{"🔐"} Save New PIN</button>
+          </div>
+
+          <button className="btnP fw" style={{marginBottom:9}} onClick={saveSettings}>{"💾"} Save All Settings</button>
+          <button className="btnO fw" onClick={()=>{setSettingsUnlocked(false);setSettingsPinInput('');}}>{"🔒"} Lock Settings</button>
+
+          <div className="sec" style={{color:'#dc2626'}}>Danger Zone</div>
+          <div className="card" style={{border:'2px solid #fee2e2'}}>
+            <div style={{fontWeight:700,color:'#dc2626',marginBottom:5}}>{"⚠️"} System Reset</div>
+            <div style={{fontSize:'.76rem',color:'#6b7c6b',marginBottom:11,lineHeight:1.6}}>This will permanently wipe ALL data including members (except admin), chats, tasks, finance records, announcements, events, polls, and complaints. This action cannot be undone.</div>
+            {!showReset
+              ? <button className="btnLg" onClick={()=>setShowReset(true)}>{"🗑️"} Reset Entire System</button>
+              : <div>
+                  <div className="inote red">You are about to delete ALL forum data. This CANNOT be undone!</div>
+                  <div className="fg"><label>Enter PIN to Confirm Reset</label>
+                    <input type="password" maxLength={4} value={resetPin}
+                      onChange={e=>{const v=e.target.value;setResetPin(v);}}
+                      placeholder="Enter your admin PIN" style={{textAlign:'center',fontSize:'1.3rem',letterSpacing:8}}/>
+                  </div>
+                  <div style={{display:'flex',gap:8}}>
+                    <button className="btnP fw" style={{background:'#dc2626',boxShadow:'none'}} onClick={doSystemReset}>{"🗑️"} CONFIRM RESET</button>
+                    <button className="btnO fw" onClick={()=>{setShowReset(false);setResetPin('');}}>Cancel</button>
+                  </div>
+                </div>
+            }
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  const pageNames = {dashboard:'Dashboard',attendance:'Attendance',members:'Members',tasks:'Tasks',finance:'Finance',chat:'Forum Chat',complaints:'Complaints',voting:'Elections & Voting',leaderboard:'Leaderboard',events:'Events',announcements:'Announcements',profile:'My Profile',idcard:'My ID Card',birthdays:'Birthdays',admin:'Admin Panel',settings:'App Settings'};
 
   return (
     <div className={'app'+(isAdmin?' is-admin':'')}>
@@ -1501,10 +1771,11 @@ export default function App() {
           </div>
         </div>
         <div className="mnav">
-          {[['🏠','Dashboard','dashboard'],['📋','Attendance','attendance'],['👥','Members','members'],['✅','Tasks','tasks'],['💰','Finance','finance'],['💬','Forum Chat','chat'],['📣','Complaints','complaints'],['🗳️','Elections','voting'],['🏆','Leaderboard','leaderboard'],['📅','Events','events'],['📢','Announcements','announcements'],['🎂','Birthdays','birthdays'],['🪪','My ID Card','idcard'],['👤','My Profile','profile']].map(([ic,lb,pg]) => (
+          {[['🏠','Dashboard','dashboard'],['📋','Attendance','attendance'],['👥','Members','members'],['✅','Tasks','tasks'],['💰','Finance','finance'],['💬','Forum Chat','chat'],['📣','Complaints','complaints'],['🗳️','Elections','voting'],['🏆','Leaderboard','leaderboard'],['📅','Events','events'],['📢','Announcements','announcements'],['🎂','Birthdays','birthdays'],['🪪','My ID Card','idcard'],['👤','My Profile','profile'],['⚙️','App Settings','settings']].map(([ic,lb,pg]) => (
             <div key={pg} className={'mi'+(page===pg?' on':'')} onClick={() => navTo(pg)}><span className="mic">{ic}</span>{lb}</div>
           ))}
-          {isAdmin && <div className={'mi'+(page==='admin'?' on':'')} onClick={() => navTo('admin')}><span className="mic">{"⚙️"}</span>Admin Panel</div>}
+          {isAdmin && <div className={'mi'+(page==='admin'?' on':'')} onClick={() => navTo('admin')}><span className="mic">{"🛠️"}</span>Admin Panel</div>}
+          {isAdmin && <div className={'mi'+(page==='settings'?' on':'')} onClick={() => navTo('settings')}><span className="mic">{"⚙️"}</span>App Settings</div>}
         </div>
         <div style={{padding:13,borderTop:'1px solid #e2f0e2'}}>
           <button className="blogout" onClick={doLogout}>{"🚪"} Sign Out</button>
