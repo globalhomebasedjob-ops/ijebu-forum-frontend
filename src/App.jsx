@@ -2,390 +2,8 @@
 // Connect to backend: set REACT_APP_API_URL=https://your-api.render.com/api
 // Or use the standalone demo mode (no backend required)
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 
-const API_BASE = (typeof process !== 'undefined' && process.env && process.env.REACT_APP_API_URL) || null;
-const DEMO_MODE = !API_BASE; // Falls back to demo mode if no backend URL
-
-// ─── INLINE API LAYER (works with or without backend) ────────────────────────
-const getToken = () => { try { return localStorage.getItem('ifa_token'); } catch { return null; } };
-const setToken = t => { try { localStorage.setItem('ifa_token', t); } catch {} };
-const clearToken = () => { try { localStorage.removeItem('ifa_token'); } catch {} };
-
-const apiFetch = async (method, path, body, formData) => {
-  if (DEMO_MODE) throw new Error('DEMO_MODE');
-  const token = getToken();
-  const res = await fetch(API_BASE + path, {
-    method,
-    headers: formData
-      ? (token ? { Authorization: 'Bearer ' + token } : {})
-      : { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) },
-    body: formData ? body : body ? JSON.stringify(body) : undefined,
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'Request failed');
-  return data;
-};
-
-const API = {
-  login: (id, pw) => apiFetch('POST', '/auth/login', { identifier: id, password: pw }).then(d => { setToken(d.token); return d; }),
-  me: () => apiFetch('GET', '/auth/me'),
-  getMembers: () => apiFetch('GET', '/members'),
-  createMember: fd => apiFetch('POST', '/members', fd, true),
-  updateMember: (id, d) => apiFetch('PUT', '/members/' + id, d),
-  uploadPhoto: (id, fd) => apiFetch('POST', '/members/' + id + '/photo', fd, true),
-  approveMember: id => apiFetch('POST', '/members/' + id + '/approve'),
-  rejectMember: id => apiFetch('POST', '/members/' + id + '/reject'),
-  suspendMember: id => apiFetch('POST', '/members/' + id + '/suspend'),
-  activateMember: id => apiFetch('POST', '/members/' + id + '/activate'),
-  deleteMember: id => apiFetch('DELETE', '/members/' + id),
-  markAttendance: (mId, status, method, lat, lng) => apiFetch('POST', '/attendance/mark', { memberId: mId, status, method, lat, lng }),
-  getAttReport: () => apiFetch('GET', '/attendance/report'),
-  getTasks: () => apiFetch('GET', '/tasks'),
-  createTask: d => apiFetch('POST', '/tasks', d),
-  completeTask: id => apiFetch('PUT', '/tasks/' + id, { status: 'done' }),
-  deleteTask: id => apiFetch('DELETE', '/tasks/' + id),
-  getSummary: () => apiFetch('GET', '/finance/summary'),
-  getTransactions: () => apiFetch('GET', '/finance/transactions'),
-  payDues: () => apiFetch('POST', '/finance/dues'),
-  contribute: (amt, purpose) => apiFetch('POST', '/finance/contribute', { amt, purpose }),
-  recordTxn: d => apiFetch('POST', '/finance/transactions', d),
-  getAnns: () => apiFetch('GET', '/announcements'),
-  createAnn: d => apiFetch('POST', '/announcements', d),
-  deleteAnn: id => apiFetch('DELETE', '/announcements/' + id),
-  getEvents: () => apiFetch('GET', '/events'),
-  createEvent: d => apiFetch('POST', '/events', d),
-  rsvpEvent: id => apiFetch('POST', '/events/' + id + '/rsvp'),
-  deleteEvent: id => apiFetch('DELETE', '/events/' + id),
-  getPolls: () => apiFetch('GET', '/polls'),
-  createPoll: d => apiFetch('POST', '/polls', d),
-  vote: (id, oi) => apiFetch('POST', '/polls/' + id + '/vote', { optionIndex: oi }),
-  deletePoll: id => apiFetch('DELETE', '/polls/' + id),
-  getChat: ch => apiFetch('GET', '/chat/' + ch),
-  sendMsg: (ch, txt) => apiFetch('POST', '/chat/' + ch, { txt }),
-  getComplaints: () => apiFetch('GET', '/complaints'),
-  fileComplaint: d => apiFetch('POST', '/complaints', d),
-  updateComplaint: (id, d) => apiFetch('PUT', '/complaints/' + id, d),
-  deleteComplaint: id => apiFetch('DELETE', '/complaints/' + id),
-  getNotifs: () => apiFetch('GET', '/notifications'),
-  markRead: id => apiFetch('PUT', '/notifications/' + id + '/read'),
-  ackBirthday: () => apiFetch('POST', '/notifications/birthday-ack'),
-  getTodayBdays: () => apiFetch('GET', '/birthdays/today'),
-  getLeaderboard: () => apiFetch('GET', '/leaderboard'),
-  register: fd => apiFetch('POST', '/auth/register', fd, true),
-};
-
-const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-const ROLES = {president:'President','vice-president':'Vice President',secretary:'General Secretary',treasurer:'Treasurer','financial-secretary':'Financial Secretary',welfare:'Welfare Officer','social-welfare':'Social Welfare',pro:'PR Officer','chief-whip':'Chief Whip',exofficio:'Ex-Officio',trustees:'Board of Trustees',member:'Member'};
-const rl = r => ROLES[r]||'Member';
-const ini = n => (n||'').split(' ').slice(0,2).map(x=>x[0]||'').join('').toUpperCase();
-const lvlI = p => p>=1000?{lbl:'Diamond',np:1000,pp:1000,next:null}:p>=500?{lbl:'Gold',np:1000,pp:500,next:'Diamond'}:p>=200?{lbl:'Silver',np:500,pp:200,next:'Gold'}:{lbl:'Bronze',np:200,pp:0,next:'Silver'};
-const lvlE = p => p>=1000?'\U0001f48e':p>=500?'\U0001f947':p>=200?'\U0001f948':'\U0001f949';
-const today = () => new Date().toISOString().split('T')[0];
-const nowT = () => { const n=new Date(); return n.getHours()+':'+String(n.getMinutes()).padStart(2,'0'); };
-const fmtD = s => s?new Date(s).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):'--';
-const daysTo = s => Math.ceil((new Date(s)-new Date())/86400000);
-const mkId = n => 'IFA-'+String(n).padStart(4,'0');
-const barBits = id => { const c=(id||'').replace(/[^A-Z0-9]/g,'');const b=[];for(let i=0;i<c.length;i++){const v=c.charCodeAt(i);b.push({w:v%2+1,h:28+v%18});b.push({w:1,h:18+v%14});}for(let i=0;i<18;i++)b.push({w:1+i%2,h:22+(i*7)%18});return b;};
-const nextSun2 = () => { let d=new Date(),n=new Date(d.getFullYear(),d.getMonth(),1);while(n.getDay()!==0)n.setDate(n.getDate()+1);n.setDate(n.getDate()+7);if(n<d){n=new Date(d.getFullYear(),d.getMonth()+1,1);while(n.getDay()!==0)n.setDate(n.getDate()+1);n.setDate(n.getDate()+7);}return n;};
-const PRAYERS = [
-  "May this new year of your life overflow with God's abundant blessings, good health, and boundless joy! Amen.",
-  "As you clock another year, may doors of greatness open for you that no man can shut. Happy Birthday!",
-  "May today mark the beginning of your best season yet. You are loved and celebrated by Ijebu Forum Abuja!",
-  "The Lord who brought you this far will never abandon you. Wishing you a wonderful birthday filled with God's goodness!"
-];
-const GEO = {lat:9.0579,lng:7.4951,name:'Transcorp Hilton, Abuja',radius:50};
-
-const SEED_M = [
-  {id:'IFA-0001',name:'Adebayo Kolawole',role:'president',des:'Chief',prof:'Businessman',phone:'08012345678',email:'adebayo@ijebu.ng',addr:'Plot 45 Maitama, Abuja',town:'Ijebu-Ode',dobDay:'15',dobMonth:'March',dobYear:'1968',nok:'Mrs Adebayo',nokP:'08012345679',nokR:'Spouse',pts:780,streak:6,att:['present','present','present','present','present','present'],tdone:12,joined:'2020-01-15',status:'active',photo:null,method:'geo',fn:'Adebayo',ln:'Kolawole',on:''},
-  {id:'IFA-0002',name:'Folasade Akinwande',role:'vice-president',des:'Dr.',prof:'Medical Doctor',phone:'08023456789',email:'folasade@ijebu.ng',addr:'7 Garki Area 11, Abuja',town:'Ago-Iwoye',dobDay:'22',dobMonth:'July',dobYear:'1972',nok:'Mr Akinwande',nokP:'08023456780',nokR:'Spouse',pts:650,streak:5,att:['present','present','absent','present','present','present'],tdone:9,joined:'2020-02-10',status:'active',photo:null,method:'geo',fn:'Folasade',ln:'Akinwande',on:''},
-  {id:'IFA-0003',name:'Olusegun Bamidele',role:'secretary',des:'Engr.',prof:'Civil Engineer',phone:'08034567890',email:'olusegun@ijebu.ng',addr:'22 Wuse Zone 4, Abuja',town:'Ijebu-Igbo',dobDay:'8',dobMonth:'November',dobYear:'1975',nok:'Cynthia Bamidele',nokP:'08034567891',nokR:'Spouse',pts:590,streak:4,att:['present','excuse','present','present','present','present'],tdone:8,joined:'2020-03-05',status:'active',photo:null,method:'scan',fn:'Olusegun',ln:'Bamidele',on:''},
-  {id:'IFA-0004',name:'Taiwo Odusanya',role:'treasurer',des:'',prof:'Accountant',phone:'08045678901',email:'taiwo@ijebu.ng',addr:'5 Lugbe Estate, Abuja',town:'Ijebu-Ode',dobDay:'4',dobMonth:'June',dobYear:'1980',nok:'Kehinde Odusanya',nokP:'08045678902',nokR:'Twin',pts:420,streak:3,att:['present','present','present','absent','present','excuse'],tdone:6,joined:'2020-06-20',status:'active',photo:null,method:'biometric',fn:'Taiwo',ln:'Odusanya',on:''},
-  {id:'IFA-0005',name:'Abimbola Fashola',role:'welfare',des:'Mrs.',prof:'Teacher',phone:'08056789012',email:'abimbola@ijebu.ng',addr:'10 Gwarimpa, Abuja',town:'Sagamu',dobDay:'17',dobMonth:'January',dobYear:'1983',nok:'Tunde Fashola',nokP:'08056789013',nokR:'Spouse',pts:380,streak:2,att:['absent','present','present','present','present','absent'],tdone:5,joined:'2020-08-12',status:'active',photo:null,method:'geo',fn:'Abimbola',ln:'Fashola',on:''},
-  {id:'IFA-0006',name:'Babatunde Oguns',role:'pro',des:'',prof:'PR Consultant',phone:'08067890123',email:'babatunde@ijebu.ng',addr:'3 Life Camp, Abuja',town:'Ijebu-Mushin',dobDay:'30',dobMonth:'August',dobYear:'1985',nok:'Grace Oguns',nokP:'08067890124',nokR:'Spouse',pts:310,streak:2,att:['present','present','absent','absent','present','present'],tdone:4,joined:'2020-11-03',status:'active',photo:null,method:'scan',fn:'Babatunde',ln:'Oguns',on:''},
-  {id:'IFA-0007',name:'Kehinde Afolabi',role:'social-welfare',des:'',prof:'Social Worker',phone:'08078901234',email:'kehinde@ijebu.ng',addr:'8 Kubwa, Abuja',town:'Ijebu-Ode',dobDay:'12',dobMonth:'December',dobYear:'1988',nok:'Taiwo Afolabi',nokP:'08078901235',nokR:'Twin',pts:270,streak:1,att:['present','absent','present','present','absent','present'],tdone:3,joined:'2021-01-08',status:'active',photo:null,method:'geo',fn:'Kehinde',ln:'Afolabi',on:''},
-  {id:'IFA-0008',name:'Monsurat Lawal',role:'chief-whip',des:'',prof:'Lawyer',phone:'08089012345',email:'monsurat@ijebu.ng',addr:'12 Asokoro, Abuja',town:'Ago-Iwoye',dobDay:'5',dobMonth:'May',dobYear:'1979',nok:'Alhaji Lawal',nokP:'08089012346',nokR:'Spouse',pts:450,streak:3,att:['present','present','present','present','excuse','present'],tdone:7,joined:'2021-02-15',status:'active',photo:null,method:'biometric',fn:'Monsurat',ln:'Lawal',on:''},
-  {id:'IFA-0009',name:'Rotimi Adeyemi',role:'exofficio',des:'Hon.',prof:'Politician',phone:'08090123456',email:'rotimi@ijebu.ng',addr:'Plot 1 Jabi, Abuja',town:'Ijebu-Ode',dobDay:'20',dobMonth:'March',dobYear:'1965',nok:'Chief Mrs Adeyemi',nokP:'08090123457',nokR:'Spouse',pts:520,streak:4,att:['present','present','present','excuse','present','present'],tdone:5,joined:'2020-03-01',status:'active',photo:null,method:'scan',fn:'Rotimi',ln:'Adeyemi',on:''},
-  {id:'IFA-0010',name:'Oluwakemi Bello',role:'trustees',des:'Prof.',prof:'Professor',phone:'08001234567',email:'oluwakemi@ijebu.ng',addr:'4 Utako, Abuja',town:'Ijebu-Igbo',dobDay:'10',dobMonth:'October',dobYear:'1960',nok:'Mr Bello',nokP:'08001234568',nokR:'Spouse',pts:890,streak:7,att:['present','present','present','present','present','present'],tdone:15,joined:'2020-01-10',status:'active',photo:null,method:'geo',fn:'Oluwakemi',ln:'Bello',on:''},
-  {id:'IFA-0011',name:'Adewale Johnson',role:'member',des:'',prof:'Trader',phone:'08011112222',email:'adewale@ijebu.ng',addr:'22 Nyanya, Abuja',town:'Ijebu-Ode',dobDay:'3',dobMonth:'September',dobYear:'1990',nok:'Shade Johnson',nokP:'08011112223',nokR:'Spouse',pts:180,streak:1,att:['absent','present','present','absent','present','present'],tdone:2,joined:'2022-01-20',status:'active',photo:null,method:'scan',fn:'Adewale',ln:'Johnson',on:''},
-  {id:'IFA-0012',name:'Simisola Okafor',role:'member',des:'',prof:'Nurse',phone:'08022223333',email:'simisola@ijebu.ng',addr:'5 Kado Estate, Abuja',town:'Ijebu-Ife',dobDay:'28',dobMonth:'February',dobYear:'1993',nok:'Mr Okafor',nokP:'08022223334',nokR:'Spouse',pts:210,streak:2,att:['present','present','absent','present','present','absent'],tdone:3,joined:'2022-03-15',status:'active',photo:null,method:'biometric',fn:'Simisola',ln:'Okafor',on:''},
-];
-
-const SEED_T = [
-  {id:1,title:'Coordinate July meeting logistics',desc:'Arrange hall, PA system and refreshments.',assignee:'IFA-0003',priority:'high',due:'2026-07-10',status:'done',by:'IFA-0001'},
-  {id:2,title:'Compile welfare list for Q3',desc:'Prepare list of members needing welfare support.',assignee:'IFA-0005',priority:'medium',due:'2026-07-25',status:'pending',by:'IFA-0001'},
-  {id:3,title:'Draft mid-year budget review',desc:'Prepare mid-year budget review for 2026.',assignee:'IFA-0004',priority:'high',due:'2026-08-01',status:'inprogress',by:'IFA-0001'},
-  {id:4,title:'Update member register',desc:'Update register with new joiners and contact changes.',assignee:'IFA-0003',priority:'medium',due:'2026-07-20',status:'pending',by:'IFA-0001'},
-];
-const SEED_A = [
-  {id:1,title:'Forum Meeting - July 2026',body:'Monthly meeting holds Sunday 12th July 2026 at 2PM. Venue: Transcorp Hilton Conference Room B, Abuja.',priority:'important',author:'Secretary',date:'2026-07-01'},
-  {id:2,title:'Annual Thanksgiving Celebration',body:'Annual thanksgiving dinner holds Saturday 28th December 2026 at Nicon Luxury Hotel. Black tie event.',priority:'normal',author:'President',date:'2026-06-20'},
-  {id:3,title:'Welfare Appeal - Alhaja Rashidat',body:'Members urged to support Alhaja Rashidat Adeyemi who was recently bereaved. Contribute via Finance page.',priority:'urgent',author:'Welfare Officer',date:'2026-07-01'},
-];
-const SEED_E = [
-  {id:1,title:'Monthly Forum Meeting',date:'2026-07-12',time:'14:00',venue:'Transcorp Hilton, Abuja',desc:'Regular monthly meeting of all members.',upcoming:true},
-  {id:2,title:'Annual Thanksgiving Dinner',date:'2026-12-28',time:'18:00',venue:'Nicon Luxury Hotel, Abuja',desc:'Annual celebration. Black tie event.',upcoming:true},
-  {id:3,title:'Ijebu Day Celebrations',date:'2026-09-20',time:'10:00',venue:'AICC, Abuja',desc:'Annual Ijebu Day celebration.',upcoming:true},
-  {id:4,title:'Forum Meeting - May 2026',date:'2026-05-11',time:'14:00',venue:'Transcorp Hilton, Abuja',desc:'Past meeting.',upcoming:false},
-];
-const SEED_P = [
-  {id:1,q:'Should monthly dues increase to N3,000 from October 2026?',opts:[{t:'Yes - N3,000',v:7},{t:'No - keep N2,000',v:4},{t:'Yes but N2,500',v:3}],end:'2026-07-31',voters:[]},
-  {id:2,q:'Should the forum hold bi-monthly instead of monthly meetings?',opts:[{t:'Yes, every 2 months',v:5},{t:'No, keep monthly',v:8}],end:'2026-07-25',voters:[]},
-];
-const SEED_TX = [
-  {id:1,desc:'Registration Fee - Adewale Johnson',type:'cr',amt:10000,date:'2026-01-15',cat:'registration'},
-  {id:2,desc:'Monthly Dues - Adebayo Kolawole',type:'cr',amt:2000,date:'2026-07-01',cat:'dues'},
-  {id:3,desc:'Monthly Dues - Folasade Akinwande',type:'cr',amt:2000,date:'2026-07-01',cat:'dues'},
-  {id:4,desc:'Event Decoration - July Meeting',type:'db',amt:15000,date:'2026-07-05',cat:'event'},
-  {id:5,desc:'Welfare Support - Bereaved Member',type:'db',amt:30000,date:'2026-07-02',cat:'welfare'},
-  {id:6,desc:'External Sponsorship - Alhaji Muritala',type:'cr',amt:100000,date:'2026-06-20',cat:'donation'},
-];
-const SEED_CANDS = [
-  {id:1,name:'Adebayo Kolawole',pos:'President',bio:'Incumbent president seeking second term. 6 years of dedicated service.'},
-  {id:2,name:'Hon. Rotimi Adeyemi',pos:'President',bio:'Ex-officio with 10+ years in Ijebu community leadership.'},
-  {id:3,name:'Dr. Folasade Akinwande',pos:'Vice President',bio:'Current VP, medical professional with strong welfare focus.'},
-  {id:4,name:'Monsurat Lawal',pos:'Vice President',bio:'Chief Whip with legal background and excellent conflict resolution.'},
-  {id:5,name:'Engr. Olusegun Bamidele',pos:'General Secretary',bio:'Current secretary with impeccable record-keeping skills.'},
-];
-
-const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@400;500;600&display=swap');
-*{box-sizing:border-box;margin:0;padding:0}
-.app{font-family:'DM Sans',sans-serif;width:100%;max-width:430px;margin:0 auto;height:100vh;display:flex;flex-direction:column;background:#f0f4f0;position:relative;overflow:hidden}
-.scroll{flex:1;overflow-y:auto;padding:12px 12px 80px;scrollbar-width:thin}
-.scroll::-webkit-scrollbar{width:3px}.scroll::-webkit-scrollbar-thumb{background:#c8ddc8;border-radius:10px}
-.tb{background:#14532d;color:#fff;padding:11px 14px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;box-shadow:0 2px 10px rgba(20,83,45,.35)}
-.tbL,.tbR{display:flex;align-items:center;gap:10px}
-.mbtn{background:rgba(255,255,255,.15);border:none;color:#fff;width:36px;height:36px;border-radius:8px;cursor:pointer;font-size:1.1rem}
-.tbtitle{font-family:'Playfair Display',serif;font-size:1.05rem;font-weight:700}
-.nbell{position:relative;cursor:pointer;font-size:1.2rem;padding:2px}
-.ndot{position:absolute;top:-4px;right:-4px;background:#dc2626;color:#fff;border-radius:50%;width:16px;height:16px;font-size:.58rem;font-weight:700;display:flex;align-items:center;justify-content:center}
-.uav{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#22c55e,#166534);color:#fff;font-weight:700;font-size:.78rem;display:flex;align-items:center;justify-content:center;cursor:pointer;border:2px solid rgba(255,255,255,.3);flex-shrink:0;overflow:hidden}
-.uav img{width:100%;height:100%;object-fit:cover}
-.splash{flex:1;background:#14532d;display:flex;align-items:center;justify-content:center;text-align:center;padding:32px 20px;position:relative;overflow:hidden}
-.splash::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 30% 20%,#166534,#0f3d20)}
-.splZ{position:relative;z-index:1;width:100%}
-.lring{width:88px;height:88px;border-radius:50%;border:3px solid rgba(34,197,94,.4);display:flex;align-items:center;justify-content:center;margin:0 auto 18px;animation:pulse 2s ease infinite}
-.linner{width:66px;height:66px;background:linear-gradient(135deg,#22c55e,#16a34a);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:30px;box-shadow:0 4px 18px rgba(34,197,94,.5)}
-@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.07)}}
-.stitle{font-family:'Playfair Display',serif;font-size:2.1rem;font-weight:900;color:#fff;margin-bottom:3px}
-.ssub{color:#86efac;font-size:.85rem;letter-spacing:2px;text-transform:uppercase;margin-bottom:3px}
-.stag{color:rgba(255,255,255,.5);font-size:.76rem;margin-bottom:28px}
-.sbtns{display:flex;gap:10px;justify-content:center}
-.btnP{background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff;border:none;padding:12px 24px;border-radius:50px;font-family:'DM Sans',sans-serif;font-size:.88rem;font-weight:600;cursor:pointer;box-shadow:0 4px 12px rgba(34,197,94,.4);transition:transform .2s}
-.btnP:hover{transform:translateY(-2px)}.btnP.fw{width:100%;border-radius:11px;padding:12px}
-.btnO{background:transparent;color:#22c55e;border:2px solid #22c55e;padding:10px 20px;border-radius:50px;font-family:'DM Sans',sans-serif;font-size:.88rem;font-weight:600;cursor:pointer}
-.btnO.fw{width:100%;border-radius:11px;margin-top:7px}
-.btnS{border:none;padding:5px 11px;border-radius:20px;font-size:.72rem;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif}
-.btnS.g{background:#dcfce7;color:#166534}.btnS.r{background:#fee2e2;color:#dc2626}.btnS.a{background:#fef3c7;color:#92400e}.btnS.gr{background:#22c55e;color:#fff}.btnS.b{background:#dbeafe;color:#1e40af}
-.blogout{background:rgba(220,38,38,.08);color:#dc2626;border:1px solid rgba(220,38,38,.2);width:100%;padding:11px;border-radius:10px;font-family:'DM Sans',sans-serif;font-weight:600;cursor:pointer;margin-top:8px}
-.fscr{display:flex;flex-direction:column;flex:1;overflow:hidden}
-.fhdr{background:#14532d;color:#fff;padding:13px 15px;display:flex;align-items:center;gap:11px;flex-shrink:0}
-.fhdr h2{font-family:'Playfair Display',serif;font-size:1.15rem}
-.bbtn{background:rgba(255,255,255,.15);border:none;color:#fff;padding:7px 12px;border-radius:7px;cursor:pointer}
-.fbody{background:#fff;border-radius:16px;margin:13px;padding:18px;box-shadow:0 2px 12px rgba(20,83,45,.08);overflow-y:auto;flex:1}
-.fsec{font-weight:700;color:#14532d;font-size:.74rem;text-transform:uppercase;letter-spacing:1px;margin:16px 0 9px;padding-bottom:5px;border-bottom:2px solid #dcfce7}
-.fg{margin-bottom:13px}
-.fg label{display:block;font-size:.72rem;font-weight:600;color:#6b7c6b;margin-bottom:5px;text-transform:uppercase;letter-spacing:.4px}
-.fg input,.fg select,.fg textarea{width:100%;padding:10px 12px;border:2px solid #e2f0e2;border-radius:9px;font-family:'DM Sans',sans-serif;font-size:.88rem;color:#1a2e1a;background:#fafcfa;outline:none;transition:border-color .2s}
-.fg input:focus,.fg select:focus,.fg textarea:focus{border-color:#22c55e}
-.fg textarea{resize:vertical;min-height:70px}
-.r2{display:grid;grid-template-columns:1fr 1fr;gap:9px}
-.r3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px}
-.hint{font-size:.74rem;color:#166534;margin:7px 0;background:#dcfce7;padding:8px 12px;border-radius:9px;line-height:1.5}
-.flink{text-align:center;color:#166534;font-size:.85rem;cursor:pointer;margin-top:9px;font-weight:500}
-.smenu{position:absolute;top:0;left:0;width:265px;height:100%;background:#fff;z-index:300;transform:translateX(-265px);transition:transform .27s ease;box-shadow:4px 0 18px rgba(0,0,0,.1);display:flex;flex-direction:column}
-.smenu.open{transform:translateX(0)}
-.mov{display:none;position:absolute;inset:0;background:rgba(0,0,0,.35);z-index:299}.mov.show{display:block}
-.mhdr{background:linear-gradient(135deg,#14532d,#166534);padding:18px 13px;color:#fff;display:flex;align-items:center;gap:11px;flex-shrink:0}
-.mavbig{width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.18);border:2px solid rgba(255,255,255,.32);color:#fff;font-weight:700;font-size:.95rem;display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden}
-.mavbig img{width:100%;height:100%;object-fit:cover;border-radius:50%}
-.mnm{font-weight:700;font-size:.9rem}.mrl{font-size:.7rem;color:rgba(255,255,255,.7);margin-top:2px}.mpts{font-size:.75rem;color:#86efac;margin-top:3px}
-.mnav{flex:1;overflow-y:auto;padding:5px 0}
-.mi{display:flex;align-items:center;padding:11px 15px;color:#1a2e1a;font-size:.86rem;cursor:pointer;transition:all .2s;border-left:3px solid transparent;gap:9px}
-.mi:hover,.mi.on{background:#dcfce7;color:#14532d;border-left-color:#22c55e;font-weight:600}
-.mic{width:19px;text-align:center}
-.bnav{position:absolute;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #e2f0e2;display:flex;z-index:100}
-.bn{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;border:none;background:transparent;cursor:pointer;color:#6b7c6b;font-size:.58rem;font-family:'DM Sans',sans-serif;font-weight:600}
-.bn .bi{font-size:1.2rem}.bn.on{color:#14532d}
-.card{background:#fff;border-radius:13px;padding:13px;margin-bottom:9px;box-shadow:0 1px 9px rgba(20,83,45,.07)}
-.cardG{background:linear-gradient(135deg,#14532d,#166534);color:#fff;border-radius:13px;padding:15px;margin-bottom:9px}
-.cardB{background:linear-gradient(135deg,#1e40af,#1d4ed8);color:#fff;border-radius:13px;padding:15px;margin-bottom:9px}
-.cardY{background:linear-gradient(135deg,#fef3c7,#fde68a);border-radius:13px;padding:13px;margin-bottom:9px}
-.sec{font-weight:700;font-size:.76rem;color:#14532d;text-transform:uppercase;letter-spacing:.7px;margin:13px 0 7px}
-.s4{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:9px}
-.sc{background:#fff;border-radius:11px;padding:10px 5px;text-align:center;cursor:pointer;box-shadow:0 1px 7px rgba(20,83,45,.07)}
-.si{font-size:1.15rem;margin-bottom:2px}.sv{font-size:.9rem;font-weight:700;color:#14532d}.sl{font-size:.56rem;color:#6b7c6b;margin-top:1px}
-.xpt{background:#e2f0e2;border-radius:20px;height:9px;overflow:hidden;margin:6px 0}
-.xpf{height:100%;background:linear-gradient(90deg,#22c55e,#16a34a);border-radius:20px;transition:width .8s}
-.xpr{display:flex;justify-content:space-between;font-size:.7rem;color:#6b7c6b}
-.qa{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:4px}
-.qab{background:#fff;border:2px solid #e2f0e2;border-radius:12px;padding:11px 5px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:5px;transition:border-color .2s;box-shadow:0 1px 7px rgba(20,83,45,.06)}
-.qab:hover{border-color:#22c55e;background:#dcfce7}
-.qai{font-size:1.35rem}.qal{font-size:.62rem;font-weight:600;color:#14532d}
-.tabs{display:flex;background:#fff;border-radius:11px;padding:3px;margin-bottom:9px;gap:3px;box-shadow:0 1px 7px rgba(20,83,45,.07);flex-wrap:wrap}
-.tb2{flex:1;padding:7px 5px;border:none;background:transparent;border-radius:9px;font-family:'DM Sans',sans-serif;font-size:.72rem;font-weight:600;color:#6b7c6b;cursor:pointer;white-space:nowrap;min-width:0}
-.tb2.on{background:#14532d;color:#fff}
-.ac{background:#fff;border-radius:11px;padding:12px;margin-bottom:7px;border-left:4px solid #22c55e;box-shadow:0 1px 7px rgba(20,83,45,.07)}
-.ac.important{border-left-color:#d97706}.ac.urgent{border-left-color:#dc2626}.ac.birthday{border-left-color:#ec4899;background:#fdf4ff}
-.at{font-weight:700;font-size:.87rem;margin-bottom:3px}.ab{font-size:.78rem;color:#6b7c6b;line-height:1.5}.am{font-size:.65rem;color:#6b7c6b;margin-top:6px;display:flex;justify-content:space-between;align-items:center}
-.mgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.mc{background:#fff;border-radius:13px;padding:13px;text-align:center;cursor:pointer;transition:transform .2s;box-shadow:0 1px 7px rgba(20,83,45,.07);position:relative}
-.mc:hover{transform:translateY(-2px)}
-.mav2{width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#22c55e,#166534);color:#fff;font-weight:700;font-size:.95rem;display:flex;align-items:center;justify-content:center;margin:0 auto 8px;overflow:hidden;border:2px solid #dcfce7}
-.mav2 img{width:100%;height:100%;object-fit:cover}
-.mn{font-weight:700;font-size:.8rem;color:#14532d;margin-bottom:2px}.mr2{font-size:.66rem;color:#6b7c6b}.mpt{font-size:.68rem;color:#d97706;font-weight:600;margin-top:3px}
-.mbdg{font-size:.62rem;background:#dcfce7;color:#14532d;border-radius:20px;padding:2px 6px;margin-top:4px;display:inline-block}
-.sbadge{position:absolute;top:6px;right:6px;background:#fee2e2;color:#dc2626;border-radius:20px;font-size:.6rem;font-weight:700;padding:2px 6px}
-.chips{display:flex;gap:6px;margin-bottom:9px;flex-wrap:wrap}
-.chip{padding:5px 13px;border-radius:20px;border:2px solid #e2f0e2;background:#fff;font-size:.76rem;font-weight:600;cursor:pointer;color:#6b7c6b}
-.chip.on{background:#14532d;color:#fff;border-color:#14532d}
-.ai{background:#fff;border-radius:11px;padding:10px 12px;margin-bottom:6px;display:flex;align-items:center;gap:9px;box-shadow:0 1px 7px rgba(20,83,45,.07)}
-.aav{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#22c55e,#166534);color:#fff;font-weight:700;font-size:.8rem;display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden}
-.aav img{width:100%;height:100%;object-fit:cover}
-.ain{flex:1;min-width:0}.anm{font-weight:600;font-size:.82rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.aid{font-size:.65rem;color:#6b7c6b}
-.srch{width:100%;padding:10px 14px;border:2px solid #e2f0e2;border-radius:30px;font-family:'DM Sans',sans-serif;font-size:.86rem;background:#fff;outline:none;margin-bottom:9px}
-.tcard{background:#fff;border-radius:11px;padding:12px;margin-bottom:7px;border-left:4px solid #22c55e;box-shadow:0 1px 7px rgba(20,83,45,.07)}
-.tcard.high{border-left-color:#dc2626}.tcard.medium{border-left-color:#d97706}
-.tt{font-weight:700;font-size:.85rem;margin-bottom:2px}.td{font-size:.76rem;color:#6b7c6b;margin-bottom:6px}
-.trow{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-.pri{font-size:.64rem;padding:2px 7px;border-radius:20px;font-weight:600}
-.pri.high{background:#fee2e2;color:#dc2626}.pri.medium{background:#fef3c7;color:#92400e}.pri.low{background:#dcfce7;color:#166534}
-.tdue{font-size:.68rem;color:#6b7c6b;margin-left:auto}
-.tdone{background:#dcfce7;color:#166534;padding:3px 8px;border-radius:20px;font-size:.68rem;font-weight:600}
-.f3{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:9px}
-.fc{border-radius:11px;padding:11px;text-align:center}
-.fc.g{background:linear-gradient(135deg,#dcfce7,#bbf7d0)}.fc.r{background:linear-gradient(135deg,#fee2e2,#fecaca)}.fc.b{background:linear-gradient(135deg,#dbeafe,#bfdbfe)}
-.fl{font-size:.63rem;font-weight:600;color:#6b7c6b;margin-bottom:3px}.fv{font-size:.88rem;font-weight:700;color:#14532d}
-.txn{background:#fff;border-radius:11px;padding:10px 12px;margin-bottom:6px;display:flex;align-items:center;gap:9px;box-shadow:0 1px 7px rgba(20,83,45,.07)}
-.ta{font-weight:700;font-size:.84rem}.ta.cr{color:#166534}.ta.db{color:#dc2626}
-.chbar{display:flex;gap:5px;overflow-x:auto;padding-bottom:6px;margin-bottom:6px;scrollbar-width:none}
-.chbar::-webkit-scrollbar{display:none}
-.cbtn{white-space:nowrap;padding:6px 12px;border-radius:20px;border:2px solid #e2f0e2;background:#fff;font-size:.74rem;font-weight:600;cursor:pointer;color:#6b7c6b;flex-shrink:0}
-.cbtn.on{background:#14532d;color:#fff;border-color:#14532d}
-.cwin{background:#fff;border-radius:13px;padding:13px;height:250px;overflow-y:auto;margin-bottom:9px;box-shadow:0 1px 7px rgba(20,83,45,.07)}
-.cm{margin-bottom:9px;display:flex;flex-direction:column}
-.cm.me{align-items:flex-end}
-.cb{max-width:80%;padding:8px 12px;border-radius:13px;font-size:.82rem;line-height:1.5}
-.cm.me .cb{background:linear-gradient(135deg,#22c55e,#166534);color:#fff;border-bottom-right-radius:3px}
-.cm.them .cb{background:#f1f5f1;color:#1a2e1a;border-bottom-left-radius:3px}
-.cm.sys .cb{background:linear-gradient(135deg,#fdf4ff,#fce7f3);color:#9333ea;border-radius:13px;max-width:95%;white-space:pre-wrap;font-size:.78rem}
-.cm-meta{font-size:.62rem;color:#6b7c6b;margin-top:2px}.cm-sn{font-size:.68rem;font-weight:600;color:#166634;margin-bottom:2px}
-.cinp{display:flex;gap:7px;background:#fff;border-radius:30px;padding:5px 5px 5px 13px;box-shadow:0 1px 7px rgba(20,83,45,.1)}
-.cinp input{flex:1;border:none;outline:none;font-family:'DM Sans',sans-serif;font-size:.86rem;background:transparent}
-.csnd{background:linear-gradient(135deg,#22c55e,#166534);color:#fff;border:none;width:37px;height:37px;border-radius:50%;cursor:pointer;font-size:.9rem;display:flex;align-items:center;justify-content:center}
-.pc{background:#fff;border-radius:13px;padding:13px;margin-bottom:9px;box-shadow:0 1px 7px rgba(20,83,45,.07)}
-.pq{font-weight:700;font-size:.87rem;margin-bottom:11px}
-.po{background:#f8fdf8;border:2px solid #e2f0e2;border-radius:9px;padding:10px;cursor:pointer;transition:border-color .2s;display:flex;align-items:center;gap:7px;margin-bottom:6px}
-.po:hover{border-color:#22c55e}.po.voted{border-color:#22c55e;background:#dcfce7}
-.pbb{flex:1;background:#e2f0e2;height:5px;border-radius:10px;overflow:hidden}
-.pbf{height:100%;background:#22c55e;border-radius:10px}
-.ppc{font-size:.74rem;font-weight:700;color:#166534;min-width:30px;text-align:right}
-.lbi{background:#fff;border-radius:11px;padding:10px 12px;margin-bottom:6px;display:flex;align-items:center;gap:9px;box-shadow:0 1px 7px rgba(20,83,45,.07)}
-.lbi.me{border:2px solid #22c55e}
-.lbr{width:27px;font-weight:700;font-size:.95rem;text-align:center;flex-shrink:0}
-.lbav{width:35px;height:35px;border-radius:50%;background:linear-gradient(135deg,#22c55e,#166534);color:#fff;font-weight:700;font-size:.76rem;display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden}
-.lbav img{width:100%;height:100%;object-fit:cover}
-.lbp{font-weight:700;font-size:.88rem;color:#d97706}
-.ec{background:#fff;border-radius:13px;padding:13px;margin-bottom:8px;box-shadow:0 1px 7px rgba(20,83,45,.07)}
-.ebg{background:linear-gradient(135deg,#14532d,#166534);color:#fff;border-radius:8px;padding:6px 9px;text-align:center;float:right;margin-left:9px}
-.eday{font-size:1.3rem;font-weight:900;font-family:'Playfair Display',serif;line-height:1}
-.emon{font-size:.58rem;text-transform:uppercase;letter-spacing:1px}
-.etit{font-weight:700;font-size:.87rem;margin-bottom:2px}.even{font-size:.74rem;color:#6b7c6b}.etim{font-size:.7rem;color:#166534;font-weight:600;margin-top:3px}.edsc{font-size:.74rem;color:#6b7c6b;margin-top:6px;clear:both}
-.rsvpb{background:#dcfce7;color:#14532d;border:2px solid #22c55e;padding:5px 12px;border-radius:8px;font-size:.74rem;font-weight:600;cursor:pointer;margin-top:8px}
-.ph{background:linear-gradient(135deg,#14532d,#166534);color:#fff;border-radius:13px;padding:20px;text-align:center;margin-bottom:10px}
-.pav{width:70px;height:70px;border-radius:50%;background:rgba(255,255,255,.18);border:3px solid rgba(255,255,255,.32);color:#fff;font-weight:700;font-size:1.4rem;display:flex;align-items:center;justify-content:center;margin:0 auto 10px;overflow:hidden}
-.pav img{width:100%;height:100%;object-fit:cover}
-.pnm{font-family:'Playfair Display',serif;font-size:1.15rem;font-weight:700}.prl{font-size:.76rem;opacity:.8;margin-top:2px}
-.pid{display:inline-block;background:rgba(255,255,255,.15);padding:3px 11px;border-radius:20px;font-size:.7rem;margin-top:6px;font-weight:600}
-.bcwrap{background:#fff;border-radius:13px;padding:13px;text-align:center;margin-bottom:9px;cursor:pointer;box-shadow:0 1px 7px rgba(20,83,45,.07)}
-.bcbars{display:flex;gap:2px;justify-content:center;align-items:flex-end;height:44px;margin:8px 0 5px}
-.bar{background:#14532d;border-radius:1px}
-.bcid{font-size:.72rem;font-weight:600;color:#6b7c6b;letter-spacing:2px}
-.ps4{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:9px}
-.psc{background:#fff;border-radius:11px;padding:9px 5px;text-align:center;box-shadow:0 1px 7px rgba(20,83,45,.07)}
-.psv{font-size:.88rem;font-weight:700;color:#14532d}.psl{font-size:.58rem;color:#6b7c6b;margin-top:2px}
-.dr{display:flex;padding:7px 0;border-bottom:1px solid #e2f0e2;gap:9px}
-.dr:last-child{border-bottom:none}
-.dl{font-size:.7rem;color:#6b7c6b;font-weight:600;min-width:95px;flex-shrink:0}.dv{font-size:.8rem;color:#1a2e1a}
-.brow{display:flex;gap:7px;flex-wrap:wrap}
-.bc{background:#fff;border-radius:11px;padding:9px;text-align:center;flex:1;min-width:60px;box-shadow:0 1px 7px rgba(20,83,45,.07)}
-.bico{font-size:1.3rem;display:block;margin-bottom:3px}.blbl{font-size:.6rem;color:#6b7c6b;font-weight:600}
-.agrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:13px}
-.acard{background:#fff;border-radius:13px;padding:13px;text-align:center;cursor:pointer;transition:transform .2s;box-shadow:0 1px 7px rgba(20,83,45,.07);font-size:.76rem;font-weight:600;color:#14532d}
-.acard:hover{transform:translateY(-2px);background:#dcfce7}
-.aico{font-size:1.5rem;margin-bottom:5px}
-.ccc{background:#fff;border-radius:11px;padding:12px;margin-bottom:7px;box-shadow:0 1px 7px rgba(20,83,45,.07)}
-.csub{font-weight:700;font-size:.85rem}.ccat{font-size:.68rem;background:#dcfce7;color:#14532d;padding:2px 7px;border-radius:20px;display:inline-block;margin:3px 0}
-.cst{font-size:.68rem;font-weight:600;padding:2px 7px;border-radius:20px}
-.cst.open{background:#fee2e2;color:#dc2626}.cst.resolved{background:#dcfce7;color:#166534}.cst.inprogress{background:#fef3c7;color:#92400e}
-.cdc{background:#fff;border-radius:13px;padding:13px;margin-bottom:8px;display:flex;align-items:center;gap:11px;box-shadow:0 1px 7px rgba(20,83,45,.07)}
-.cdav{width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#22c55e,#166534);color:#fff;font-weight:700;font-size:.95rem;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.pbg{display:none;position:absolute;inset:0;background:rgba(0,0,0,.35);z-index:300}.pbg.show{display:block}
-.panel{position:absolute;right:-100%;top:0;width:80%;max-width:300px;height:100%;background:#fff;z-index:400;transition:right .27s ease;box-shadow:-4px 0 18px rgba(0,0,0,.1);display:flex;flex-direction:column}
-.panel.show{right:0}
-.phdr{padding:13px 15px;background:#14532d;color:#fff;display:flex;justify-content:space-between;align-items:center;flex-shrink:0}
-.phdr button{background:rgba(255,255,255,.15);border:none;color:#fff;width:25px;height:25px;border-radius:5px;cursor:pointer}
-.pbody2{flex:1;overflow-y:auto}
-.ni{padding:11px 13px;border-bottom:1px solid #e2f0e2;cursor:pointer}.ni.unread{background:#f0fdf4}
-.nt{font-weight:600;font-size:.82rem;margin-bottom:2px}.nb{font-size:.74rem;color:#6b7c6b}.ntm{font-size:.65rem;color:#6b7c6b;margin-top:2px}
-.mbg2{display:none;position:absolute;inset:0;background:rgba(0,0,0,.5);z-index:500;align-items:flex-end;justify-content:center}
-.mbg2.show{display:flex}
-.mbox{background:#fff;border-radius:20px 20px 0 0;padding:20px;width:100%;max-height:90vh;overflow-y:auto}
-.mbox h3{font-family:'Playfair Display',serif;color:#14532d;margin-bottom:13px;font-size:1.1rem}
-.bcxl{display:flex;gap:2px;justify-content:center;align-items:flex-end;height:68px;margin:12px 0 6px}
-.toast{position:absolute;bottom:82px;left:50%;transform:translateX(-50%) translateY(8px);background:rgba(20,83,45,.95);color:#fff;padding:9px 17px;border-radius:28px;font-size:.82rem;font-weight:600;opacity:0;transition:all .3s;pointer-events:none;z-index:999;white-space:pre-wrap;max-width:86%;text-align:center}
-.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
-.ppop{position:absolute;top:38%;left:50%;transform:translate(-50%,-50%) scale(0);background:linear-gradient(135deg,#d97706,#f59e0b);color:#fff;font-size:1.3rem;font-weight:900;padding:16px 26px;border-radius:16px;z-index:998;opacity:0;transition:all .3s;pointer-events:none;text-align:center}
-.ppop.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
-.mcard{background:linear-gradient(135deg,#14532d,#166534);color:#fff;border-radius:12px;padding:13px;display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
-.bopen{background:#22c55e;color:#fff;padding:3px 9px;border-radius:20px;font-size:.7rem;font-weight:700}
-.bwarn{background:#fef3c7;color:#92400e;padding:3px 9px;border-radius:20px;font-size:.7rem;font-weight:600}
-.scanbox{background:#f8fdf8;border:2px dashed #22c55e;border-radius:13px;padding:20px;text-align:center;cursor:pointer;margin-bottom:11px}
-.inote{background:#fef3c7;border:1px solid #fde68a;border-radius:9px;padding:10px;font-size:.76rem;color:#92400e;margin-bottom:11px;line-height:1.5}
-.inote.blue{background:#dbeafe;border-color:#93c5fd;color:#1e40af}
-.empty{text-align:center;padding:34px 14px;color:#6b7c6b}
-.empty .ei{font-size:2.4rem;display:block;margin-bottom:9px}
-.geobox{border:2px solid #22c55e;border-radius:13px;padding:14px;text-align:center;margin-bottom:12px;background:#f0fdf4}
-.geobox.err{border-color:#dc2626;background:#fff5f5}
-.biobox{background:linear-gradient(135deg,#1e40af,#1d4ed8);color:#fff;border-radius:13px;padding:18px;text-align:center;margin-bottom:12px}
-@keyframes bfpulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.7;transform:scale(.95)}}
-.biofing{font-size:3rem;margin-bottom:8px;animation:bfpulse 1.5s ease infinite}
-.photo-area{border:2px dashed #22c55e;border-radius:12px;padding:16px;text-align:center;cursor:pointer;background:#f8fdf8;position:relative}
-.photo-area input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
-.photo-prev{width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid #22c55e;margin:0 auto 8px;display:block}
-.idc{background:linear-gradient(135deg,#14532d 0%,#166534 40%,#1a7a40 100%);border-radius:16px;overflow:hidden;box-shadow:0 8px 32px rgba(20,83,45,.4);margin-bottom:14px;width:100%;max-width:340px;margin-left:auto;margin-right:auto}
-.idc-head{padding:12px 14px 10px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(255,255,255,.15)}
-.idc-logo{width:32px;height:32px;background:rgba(255,255,255,.2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
-.idc-org .on{font-family:'Playfair Display',serif;font-size:.9rem;font-weight:700;color:#fff;line-height:1.1}
-.idc-org .os{font-size:.58rem;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:1px}
-.idc-body{padding:14px;display:flex;gap:12px;align-items:flex-start}
-.idc-photo{width:66px;height:76px;border-radius:8px;background:rgba(255,255,255,.15);border:2px solid rgba(255,255,255,.3);overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:1.3rem}
-.idc-photo img{width:100%;height:100%;object-fit:cover}
-.idc-info{flex:1;color:#fff}
-.idc-name{font-family:'Playfair Display',serif;font-size:.95rem;font-weight:700;margin-bottom:2px;line-height:1.2}
-.idc-role{font-size:.64rem;background:rgba(255,255,255,.2);padding:2px 7px;border-radius:20px;display:inline-block;margin-bottom:7px}
-.idc-det{font-size:.67rem;opacity:.85;margin-bottom:2px;display:flex;gap:4px}
-.idc-det span:first-child{opacity:.7;min-width:50px;flex-shrink:0}
-.idc-foot{background:rgba(0,0,0,.2);padding:10px 14px;display:flex;align-items:center;justify-content:space-between}
-.idc-bc{display:flex;gap:1px;align-items:flex-end;height:28px}
-.idc-bc .bar{background:rgba(255,255,255,.8);border-radius:.5px}
-.idc-idnum{color:#86efac;font-size:.68rem;font-weight:700;letter-spacing:1.5px}
-.idc-issued{color:rgba(255,255,255,.55);font-size:.58rem;margin-top:2px}
-.bday-ov{position:absolute;inset:0;background:rgba(0,0,0,.85);z-index:600;display:flex;align-items:center;justify-content:center;padding:16px}
-@keyframes bdayIn{from{transform:scale(.7);opacity:0}to{transform:scale(1);opacity:1}}
-.bday-card{background:linear-gradient(135deg,#7c3aed,#ec4899,#f59e0b);border-radius:20px;padding:24px;text-align:center;max-width:340px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.4);animation:bdayIn .5s ease}
-@keyframes spin3{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
-.bday-conf{font-size:1.8rem;animation:spin3 3s linear infinite;display:inline-block;margin-bottom:8px}
-.bday-pav{width:80px;height:80px;border-radius:50%;border:4px solid rgba(255,255,255,.4);margin:0 auto 12px;overflow:hidden;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.6rem;font-weight:700}
-.bday-pav img{width:100%;height:100%;object-fit:cover}
-.bday-name{font-family:'Playfair Display',serif;font-size:1.3rem;font-weight:900;color:#fff;margin-bottom:3px}
-.bday-sub{font-size:.82rem;color:rgba(255,255,255,.85);margin-bottom:12px}
-.bday-prayer{background:rgba(255,255,255,.15);border-radius:12px;padding:13px;color:#fff;font-size:.8rem;line-height:1.6;margin-bottom:14px;text-align:left}
-.bday-ack{background:#fff;color:#7c3aed;border:none;padding:12px 28px;border-radius:50px;font-family:'DM Sans',sans-serif;font-size:.9rem;font-weight:700;cursor:pointer}
-.bday-wall{background:linear-gradient(135deg,#fdf4ff,#fce7f3);border-radius:13px;padding:14px;margin-bottom:9px;border-left:4px solid #ec4899}
-.arow{display:flex;gap:5px;flex-wrap:wrap;margin-top:9px}
-`;
 
 export default function App() {
   const [members, setMembers] = useState(() => SEED_M.map(m => ({...m})));
@@ -544,16 +162,8 @@ export default function App() {
     return rok && (!q || m.name.toLowerCase().includes(q) || m.id.toLowerCase().includes(q) || m.phone.includes(q) || (m.town||'').toLowerCase().includes(q));
   });
 
-  const doLogin = async () => {
+  const doLogin = () => {
     if (!lid.trim() || !lpw) { T('Enter your credentials'); return; }
-    if (!DEMO_MODE) {
-      try {
-        const data = await API.login(lid.trim(), lpw);
-        const u = {...data.member, isAdmin: data.member.isAdmin || data.member.role==='president'};
-        setUser(u); setScr('app'); setPage('dashboard'); T('Welcome back, '+u.name.split(' ')[0]+'!'); return;
-      } catch (e) { T(e.message || 'Login failed'); return; }
-    }
-    // Demo mode fallback
     if ((lid==='admin@ijebu.ng'||lid==='admin'||lid==='IFA-0001') && lpw==='admin123') {
       const u = {...members[0], isAdmin:true};
       setUser(u); setScr('app'); setPage('dashboard'); T('Welcome back, '+u.name.split(' ')[0]+'!'); return;
@@ -562,7 +172,7 @@ export default function App() {
     if (!f) { T('Member not found'); return; }
     if (f.status === 'suspended') { T('Account suspended. Contact the admin.'); return; }
     if (lpw === 'member123') { setUser({...f,isAdmin:false}); setScr('app'); setPage('dashboard'); T('Welcome, '+f.name.split(' ')[0]+'!'); return; }
-    T('Wrong password.\nAdmin: admin@ijebu.ng / admin123\nMember password: member123');
+    T('Wrong password.\nAdmin: admin@ijebu.ng / admin123\nMember: member123');
   };
   const doLogout = () => { setUser(null); setScr('splash'); setMenuOpen(false); };
 
@@ -603,16 +213,7 @@ export default function App() {
     else { setPending(p => [...p,m]); T('Application submitted! Your ID will be '+id); setScr('login'); }
   };
 
-  const markAtt = async (mid, status, method, lat, lng) => {
-    if (!DEMO_MODE) {
-      try {
-        const data = await API.markAttendance(mid, status, method, lat, lng);
-        setMembers(ms => ms.map(m => m.id === mid ? {...m, ...data.member} : m));
-        if (user && mid === user.id) { setUser(u => ({...u, pts: data.pts, streak: data.streak})); PP('+10 pts! Attendance'); }
-        const m = members.find(x => x.id===mid);
-        T((m?m.name.split(' ')[0]:mid)+' marked '+status+' via '+method); return;
-      } catch (e) { T(e.message); return; }
-    }
+  const markAtt = (mid, status, method, lat, lng) => {
     setMembers(ms => ms.map(m => {
       if (m.id !== mid) return m;
       const a = [...m.att]; const l = a[a.length-1];
@@ -772,7 +373,7 @@ export default function App() {
           <div className="stitle">Ijebu Forum</div>
           <div className="ssub">Abuja Chapter</div>
           <div className="stag">Unity · Progress · Welfare</div>
-          {DEMO_MODE && <div style={{background:"rgba(255,255,255,.15)",borderRadius:9,padding:"6px 12px",fontSize:".72rem",color:"rgba(255,255,255,.8)",marginBottom:8}}>Demo Mode — Connect backend for live data</div>}
+          
           <div className="sbtns">
             <button className="btnP" onClick={() => setScr('login')}>Sign In</button>
             <button className="btnO" onClick={() => setScr('register')}>New Member</button>
@@ -894,7 +495,7 @@ export default function App() {
         ));
       })()}
     </div>
-    </div>
+  </div>
   );
 
   PG.attendance = (
@@ -1283,6 +884,8 @@ export default function App() {
         </div>
       )}
     </div>
+    </div>
+  </div>
   );
 
   PG.leaderboard = (
@@ -1414,6 +1017,7 @@ export default function App() {
           <button className="btnP fw" onClick={() => navTo('idcard')}>{"🪪"} ID Card</button>
         </div>
       </div>
+    </div>
     );
   })();
 
